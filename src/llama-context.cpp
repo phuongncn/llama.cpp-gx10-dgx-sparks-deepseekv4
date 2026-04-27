@@ -2074,6 +2074,13 @@ uint32_t llama_context::graph_max_nodes(uint32_t n_tokens) const {
         return std::max<uint32_t>(n_tokens * 40, 32u * model.n_tensors());
     }
     uint32_t res = std::max<uint32_t>(1024u, 8u*model.n_tensors());
+    // DeepSeek V4 decode_chunk path creates many tensor objects during the
+    // per-token loop in dsv4_build_compressor_decode_chunk. Each compressed
+    // layer creates ~4K-12K tensor objects per ubatch (n_ubatch=512). With
+    // 41 compressed layers this requires ~350K+ extra tensor slots.
+    if (model.arch == LLM_ARCH_DEEPSEEK4) {
+        res += 450000u;
+    }
     for (const auto & lora : model.loras) {
         res += lora->get_n_nodes();
     }
