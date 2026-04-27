@@ -2253,6 +2253,17 @@ void llama_vocab::impl::load(llama_model_loader & ml, const LLM_KV & kv) {
     }
     GGML_ASSERT(id_to_token.size() == token_to_id.size());
 
+    // Detect Ġ-style (GPT-2/BPE) vocab that incorrectly declares 'llama' (SPM) type.
+    // DeepSeek V4 Flash uses Ġ (U+0120) space-encoding but its GGUF says tokenizer.ggml.model='llama'.
+    // Without this fix, byte_to_token crashes on every tokenization.
+    if (type == LLAMA_VOCAB_TYPE_SPM && token_to_id.count("\xc4\xa0") > 0) {
+        LLAMA_LOG_INFO("%s: vocab contains Ġ (U+0120) tokens — overriding SPM→BPE (misidentified tokenizer)\n", __func__);
+        type = LLAMA_VOCAB_TYPE_BPE;
+        pre_type = LLAMA_VOCAB_PRE_TYPE_DEEPSEEK3_LLM;
+        clean_spaces = false;
+        ignore_merges = true;
+    }
+
     init_tokenizer(type);
 
     // determine the newline token: LLaMA "<0x0A>" == 10 == '\n', Falcon 193 == '\n'

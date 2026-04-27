@@ -2037,6 +2037,21 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
             {
                 ggml_compute_forward_gated_delta_net(params, tensor);
             } break;
+        case GGML_OP_DSV4_HC_SPLIT_SINKHORN:
+            ggml_compute_forward_dsv4_hc_split_sinkhorn(params, tensor);
+            break;
+        case GGML_OP_DSV4_HC_WEIGHTED_SUM:
+            ggml_compute_forward_dsv4_hc_weighted_sum(params, tensor);
+            break;
+        case GGML_OP_DSV4_HC_EXPAND:
+            ggml_compute_forward_dsv4_hc_expand(params, tensor);
+            break;
+        case GGML_OP_DSV4_FP8_KV_QUANTIZE:
+            ggml_compute_forward_dsv4_fp8_kv_quantize(params, tensor);
+            break;
+        case GGML_OP_DSV4_ROPE_TAIL:
+            ggml_compute_forward_dsv4_rope_tail(params, tensor);
+            break;
         case GGML_OP_MAP_CUSTOM1:
             {
                 ggml_compute_forward_map_custom1(params, tensor);
@@ -2356,6 +2371,8 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
         case GGML_OP_FLASH_ATTN_BACK:
         case GGML_OP_SSM_CONV:
         case GGML_OP_SSM_SCAN:
+        case GGML_OP_DSV4_FP8_KV_QUANTIZE:
+        case GGML_OP_DSV4_ROPE_TAIL:
             {
                 n_tasks = n_threads;
             } break;
@@ -2369,6 +2386,9 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
         case GGML_OP_WIN_PART:
         case GGML_OP_WIN_UNPART:
         case GGML_OP_GET_REL_POS:
+        case GGML_OP_DSV4_HC_SPLIT_SINKHORN:
+        case GGML_OP_DSV4_HC_WEIGHTED_SUM:
+        case GGML_OP_DSV4_HC_EXPAND:
             {
                 n_tasks = 1;
             } break;
@@ -2837,6 +2857,7 @@ struct ggml_cplan ggml_graph_plan(
                 case GGML_OP_SOFT_MAX:
                 case GGML_OP_ROPE:
                 case GGML_OP_ROPE_BACK:
+                case GGML_OP_DSV4_ROPE_TAIL:
                     {
                         cur = ggml_type_size(GGML_TYPE_F32) * node->ne[0] * n_tasks;
                     } break;

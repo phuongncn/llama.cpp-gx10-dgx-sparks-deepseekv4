@@ -93,6 +93,7 @@ enum llm_type {
     LLM_TYPE_70B,
     LLM_TYPE_120B,
     LLM_TYPE_142B,
+    LLM_TYPE_158B,
     LLM_TYPE_236B,
     LLM_TYPE_290B,
     LLM_TYPE_314B,
@@ -490,6 +491,26 @@ struct llama_layer {
     // gemma4 layer output scale
     struct ggml_tensor * out_scale = nullptr;
 
+    // DeepSeek V4 (antirez GGUF format)
+    struct ggml_tensor * attn_kv    = nullptr;   // combined KV projection (no LoRA for KV)
+    struct ggml_tensor * attn_wo_a  = nullptr;   // factored attention output A
+    struct ggml_tensor * attn_wo_b  = nullptr;   // factored attention output B
+    struct ggml_tensor * hc_attn_base  = nullptr;
+    struct ggml_tensor * hc_attn_fn    = nullptr;
+    struct ggml_tensor * hc_attn_scale = nullptr;
+    struct ggml_tensor * hc_ffn_base   = nullptr;
+    struct ggml_tensor * hc_ffn_fn     = nullptr;
+    struct ggml_tensor * hc_ffn_scale  = nullptr;
+    struct ggml_tensor * attn_compressor_kv   = nullptr;
+    struct ggml_tensor * attn_compressor_gate = nullptr;
+    struct ggml_tensor * attn_compressor_ape  = nullptr;
+    struct ggml_tensor * attn_compressor_norm = nullptr;
+    struct ggml_tensor * indexer_compressor_kv   = nullptr;
+    struct ggml_tensor * indexer_compressor_gate = nullptr;
+    struct ggml_tensor * indexer_compressor_ape  = nullptr;
+    struct ggml_tensor * indexer_compressor_norm = nullptr;
+    struct ggml_tensor * ffn_gate_tid2eid = nullptr;
+
     struct llama_layer_posnet posnet;
 
     struct llama_layer_convnext convnext;
@@ -545,6 +566,11 @@ struct llama_model {
 
     struct ggml_tensor * conv1d   = nullptr;
     struct ggml_tensor * conv1d_b = nullptr;
+
+    // DeepSeek V4 (antirez GGUF format)
+    struct ggml_tensor * output_hc_base  = nullptr;
+    struct ggml_tensor * output_hc_fn    = nullptr;
+    struct ggml_tensor * output_hc_scale = nullptr;
 
     // gemma3n altup
     struct ggml_tensor * altup_proj           = nullptr;

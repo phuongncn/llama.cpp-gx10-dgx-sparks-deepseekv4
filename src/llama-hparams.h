@@ -14,6 +14,7 @@ enum llama_expert_gating_func_type {
     LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX        = 1,
     LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID        = 2,
     LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX_WEIGHT = 3, // applied to the router weights instead of the logits
+    LLAMA_EXPERT_GATING_FUNC_TYPE_SQRTSOFTPLUS   = 4,
 };
 
 enum llama_swa_type {
@@ -205,6 +206,17 @@ struct llama_hparams {
     uint32_t indexer_n_head    = 0;
     uint32_t indexer_head_size = 0;
     uint32_t indexer_top_k     = 0;
+
+    // DeepSeek V4
+    uint32_t n_lora_o              = 0;   // output projection lora rank
+    uint32_t n_attn_out_groups     = 0;   // output grouped projection groups
+    float    compress_rope_freq_base = 0.0f;
+    uint32_t n_hash_layers         = 0;
+    uint32_t n_hc                  = 0;   // hyper connection count
+    uint32_t hc_sinkhorn_iters     = 0;
+    float    hc_eps                = 1e-6f;
+    uint32_t dsv4_state_size       = 0;   // max KV state size for compression layers
+    std::array<uint32_t, LLAMA_MAX_LAYERS> attn_compress_ratio = {};
 
     // qwen3vl deepstack
     uint32_t n_deepstack_layers = 0;

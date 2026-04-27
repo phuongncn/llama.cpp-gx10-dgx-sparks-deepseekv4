@@ -186,6 +186,26 @@ struct llama_model_loader {
 
     void done_getting_tensors() const;
 
+    // Claim (skip) all tensors in the GGUF that have not been loaded yet.
+    // Used by architectures that intentionally leave tensors unloaded (e.g. expert weights
+    // that are not yet supported in the forward pass).
+    void skip_unused_tensors();
+
+    // Create a tensor in the given backend buffer type context without looking up the GGUF.
+    // Used for combined 3D expert tensors that are assembled post-load from per-expert GGUF entries.
+    // Does NOT increment n_created (caller must account for unclaimed GGUF tensors via skip_unused_tensors).
+    struct ggml_tensor * create_combined_tensor(
+        const llama_hparams & hparams,
+        ggml_backend_buffer_type_t buft,
+        const char * name,
+        ggml_type type,
+        const std::initializer_list<int64_t> & ne);
+
+    // Read raw bytes of a named tensor from the GGUF file into a caller-provided buffer.
+    // Requires init_mappings() to have been called when use_mmap is true.
+    // Returns false if the tensor is not found or the buffer size does not match.
+    bool read_tensor_raw(const char * name, void * buf, size_t buf_size) const;
+
     void init_mappings(bool prefetch = true, llama_mlocks * mlock_mmaps = nullptr);
 
     void get_mapping_range(size_t * first, size_t * last, void ** addr, int idx, ggml_context * ctx) const;

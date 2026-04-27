@@ -668,17 +668,19 @@ void llm_graph_input_mem_hybrid_iswa::set_input(const llama_ubatch * ubatch) {
     // base tensors may not be allocated if there are no non-SWA attention layers
     if (inp_attn->self_k_idxs && inp_attn->self_k_idxs->buffer) {
         attn_ctx->get_base()->set_input_k_idxs(inp_attn->self_k_idxs, ubatch);
-        attn_ctx->get_base()->set_input_v_idxs(inp_attn->self_v_idxs, ubatch);
-
         attn_ctx->get_base()->set_input_kq_mask(inp_attn->self_kq_mask, ubatch, cparams.causal_attn);
+    }
+    if (inp_attn->self_v_idxs && inp_attn->self_v_idxs->buffer) {
+        attn_ctx->get_base()->set_input_v_idxs(inp_attn->self_v_idxs, ubatch);
     }
 
     // swa tensors may not be allocated if there are no SWA attention layers
     if (inp_attn->self_k_idxs_swa && inp_attn->self_k_idxs_swa->buffer) {
         attn_ctx->get_swa()->set_input_k_idxs(inp_attn->self_k_idxs_swa, ubatch);
-        attn_ctx->get_swa()->set_input_v_idxs(inp_attn->self_v_idxs_swa, ubatch);
-
         attn_ctx->get_swa()->set_input_kq_mask(inp_attn->self_kq_mask_swa, ubatch, cparams.causal_attn);
+    }
+    if (inp_attn->self_v_idxs_swa && inp_attn->self_v_idxs_swa->buffer) {
+        attn_ctx->get_swa()->set_input_v_idxs(inp_attn->self_v_idxs_swa, ubatch);
     }
 
     if (inp_attn->self_k_rot) {
@@ -1241,7 +1243,8 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
          ggml_tensor * gate_up_exps,
          ggml_tensor * up_exps_s,
          ggml_tensor * gate_exps_s,
-         ggml_tensor * down_exps_s) const {
+         ggml_tensor * down_exps_s,
+         ggml_tensor * selected_experts_in) const {
     return build_moe_ffn(
         cur,
         gate_inp,  /* gate_inp_b  */ nullptr,
@@ -1261,7 +1264,8 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
         /* gate_up_exps_b */ nullptr,
         up_exps_s,
         gate_exps_s,
-        down_exps_s
+        down_exps_s,
+        selected_experts_in
     );
 }
 
@@ -1288,10 +1292,12 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
          ggml_tensor * gate_up_exps_b,
          ggml_tensor * up_exps_s,
          ggml_tensor * gate_exps_s,
-         ggml_tensor * down_exps_s) const {
+         ggml_tensor * down_exps_s,
+         ggml_tensor * selected_experts_in) const {
     const int64_t n_embd   = cur->ne[0];
     const int64_t n_tokens = cur->ne[1];
     const bool weight_before_ffn = arch == LLM_ARCH_LLAMA4; // for llama4, we apply the sigmoid-ed weights before the FFN
+    const bool weight_before_down = arch == LLM_ARCH_DEEPSEEK4; // DeepSeek V4 applies routed weights after SwiGLU and before w2
 
     ggml_tensor * logits = nullptr;
 
@@ -1316,6 +1322,10 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
         case LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID:
             {
                 probs = ggml_sigmoid(ctx0, logits); // [n_expert, n_tokens]
+            } break;
+        case LLAMA_EXPERT_GATING_FUNC_TYPE_SQRTSOFTPLUS:
+            {
+                probs = ggml_sqrt(ctx0, ggml_softplus(ctx0, logits)); // [n_expert, n_tokens]
             } break;
         case LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX_WEIGHT:
             {
@@ -1371,8 +1381,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
     }
 
     // select experts
-    ggml_tensor * selected_experts = ggml_argsort_top_k(ctx0, selection_probs, n_expert_used); // [n_expert_used, n_tokens]
-    cb(selected_experts->src[0], "ffn_moe_argsort", il);
+    ggml_tensor * selected_experts = selected_experts_in;
+    if (selected_experts == nullptr) {
+        selected_experts = ggml_argsort_top_k(ctx0, selection_probs, n_expert_used); // [n_expert_used, n_tokens]
+        cb(selected_experts->src[0], "ffn_moe_argsort", il);
+    }
     cb(selected_experts, "ffn_moe_topk", il);
 
     if (arch == LLM_ARCH_GROVEMOE && n_expert != hparams.n_expert) {
@@ -1564,6 +1577,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
             GGML_ABORT("fatal error");
     }
 
+    if (weight_before_down) {
+        cur = ggml_mul(ctx0, cur, weights);
+        cb(cur, "ffn_moe_weighted_swiglu", il);
+    }
+
     experts = build_lora_mm_id(down_exps, cur, selected_experts); // [n_embd, n_expert_used, n_tokens]
     cb(experts, "ffn_moe_down", il);
 
@@ -1581,7 +1599,7 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
         cb(experts, "ffn_moe_down_scaled", il);
     }
 
-    if (!weight_before_ffn) {
+    if (!weight_before_ffn && !weight_before_down) {
         experts = ggml_mul(ctx0, experts, weights);
         cb(experts, "ffn_moe_weighted", il);
     }

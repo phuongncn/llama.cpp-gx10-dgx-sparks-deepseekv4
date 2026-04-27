@@ -1352,11 +1352,22 @@ ggml_tensor * llama_kv_cache::build_input_v_rot(ggml_context * ctx) const {
 }
 
 void llama_kv_cache::set_input_k_idxs(ggml_tensor * dst, const llama_ubatch * ubatch, const slot_info & sinfo) const {
+    if (!dst->buffer) {
+        return;
+    }
+
     const uint32_t n_tokens = ubatch->n_tokens;
     GGML_ASSERT(n_tokens == (int64_t) sinfo.size()*sinfo.n_stream());
 
-    GGML_ASSERT(ggml_backend_buffer_is_host(dst->buffer));
-    int64_t * data = (int64_t *) dst->data;
+    std::vector<int64_t> buf;
+    int64_t * data;
+
+    if (ggml_backend_buffer_is_host(dst->buffer)) {
+        data = (int64_t *) dst->data;
+    } else {
+        buf.resize(sinfo.size()*sinfo.n_stream());
+        data = buf.data();
+    }
 
     for (uint32_t s = 0; s < sinfo.n_stream(); ++s) {
         const int64_t offs = sinfo.strm[s]*get_size();
@@ -1365,14 +1376,34 @@ void llama_kv_cache::set_input_k_idxs(ggml_tensor * dst, const llama_ubatch * ub
             data[s*sinfo.size() + i] = offs + sinfo.idxs[s][i];
         }
     }
+
+    if (!ggml_backend_buffer_is_host(dst->buffer)) {
+        ggml_backend_tensor_set(dst, buf.data(), 0, buf.size()*sizeof(int64_t));
+    }
 }
 
 void llama_kv_cache::set_input_v_idxs(ggml_tensor * dst, const llama_ubatch * ubatch, const slot_info & sinfo) const {
+    if (!dst->buffer) {
+        return;
+    }
+
     const uint32_t n_tokens = ubatch->n_tokens;
     GGML_ASSERT(n_tokens == (int64_t) sinfo.size()*sinfo.n_stream());
 
-    GGML_ASSERT(ggml_backend_buffer_is_host(dst->buffer));
-    int64_t * data = (int64_t *) dst->data;
+    std::vector<int64_t> buf;
+    int64_t * data;
+
+    if (ggml_backend_buffer_is_host(dst->buffer)) {
+        data = (int64_t *) dst->data;
+    } else {
+        if (!v_trans) {
+            buf.resize(sinfo.size()*sinfo.n_stream());
+        } else {
+            const int64_t n_embd_v_gqa = hparams.n_embd_v_gqa_max();
+            buf.resize(sinfo.size()*sinfo.n_stream()*n_embd_v_gqa);
+        }
+        data = buf.data();
+    }
 
     if (!v_trans) {
         for (uint32_t s = 0; s < sinfo.n_stream(); ++s) {
@@ -1398,12 +1429,26 @@ void llama_kv_cache::set_input_v_idxs(ggml_tensor * dst, const llama_ubatch * ub
             }
         }
     }
+
+    if (!ggml_backend_buffer_is_host(dst->buffer)) {
+        ggml_backend_tensor_set(dst, buf.data(), 0, buf.size()*sizeof(int64_t));
+    }
 }
 
 void llama_kv_cache::set_input_k_shift(ggml_tensor * dst) const {
-    GGML_ASSERT(ggml_backend_buffer_is_host(dst->buffer));
+    if (!dst->buffer) {
+        return;
+    }
 
-    int32_t * data = (int32_t *) dst->data;
+    std::vector<int32_t> buf;
+    int32_t * data;
+
+    if (ggml_backend_buffer_is_host(dst->buffer)) {
+        data = (int32_t *) dst->data;
+    } else {
+        buf.resize(n_stream*v_cells[0].size());
+        data = buf.data();
+    }
 
     for (uint32_t s = 0; s < n_stream; ++s) {
         const auto & cells = v_cells[s];
@@ -1411,6 +1456,10 @@ void llama_kv_cache::set_input_k_shift(ggml_tensor * dst) const {
         for (uint32_t i = 0; i < cells.size(); ++i) {
             data[s*cells.size() + i] = cells.is_empty(i) ? 0 : cells.get_shift(i);
         }
+    }
+
+    if (!ggml_backend_buffer_is_host(dst->buffer)) {
+        ggml_backend_tensor_set(dst, buf.data(), 0, buf.size()*sizeof(int32_t));
     }
 }
 

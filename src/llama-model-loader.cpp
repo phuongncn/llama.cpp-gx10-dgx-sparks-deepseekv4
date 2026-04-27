@@ -393,6 +393,7 @@ namespace GGUFMeta {
     }
 
     template bool llama_model_loader::get_arr<std::vector<std::string>>(enum llm_kv kid, std::vector<std::string> & result, bool required);
+    template bool llama_model_loader::get_arr<std::vector<uint32_t>>(enum llm_kv kid, std::vector<uint32_t> & result, bool required);
 
     template<typename T>
     bool llama_model_loader::get_key(const std::string & key, T & result, bool required) {
@@ -1310,6 +1311,82 @@ struct ggml_tensor * llama_model_loader::create_tensor_as_view(struct ggml_conte
     n_created++;
 
     return tensor;
+}
+
+void llama_model_loader::skip_unused_tensors() {
+    // Claim all tensors in the GGUF that haven't been loaded yet.
+    // This satisfies the done_getting_tensors() count check for architectures
+    // that intentionally skip some weights (e.g. expert tensors not yet supported).
+    // Unclaimed tensors won't be loaded into device memory.
+    if (n_created < n_tensors) {
+        LLAMA_LOG_INFO("%s: skipping %d unclaimed tensors (not loaded into device memory)\n",
+            __func__, n_tensors - n_created);
+        n_created = n_tensors;
+    }
+}
+
+struct ggml_tensor * llama_model_loader::create_combined_tensor(
+        const llama_hparams & hparams,
+        ggml_backend_buffer_type_t buft,
+        const char * name,
+        ggml_type type,
+        const std::initializer_list<int64_t> & ne) {
+
+    auto it = ctx_map.find(buft);
+    if (it == ctx_map.end()) {
+        // Create a new context sized for the full tensor count (generous headroom)
+        int max_n = n_tensors + 1 + hparams.n_layer * 2;
+        const size_t ctx_size = ggml_tensor_overhead() * max_n;
+        ggml_init_params params = {ctx_size, nullptr, /*no_alloc=*/true};
+        ggml_context * ctx = ggml_init(params);
+        if (!ctx) {
+            throw std::runtime_error(format("create_combined_tensor: failed to create context for %s", name));
+        }
+        ctx_map.emplace(buft, ctx);
+        it = ctx_map.find(buft);
+    }
+
+    ggml_context * ctx = it->second.get();
+    int n_dims = (int)ne.size();
+    int64_t ne_arr[GGML_MAX_DIMS] = {1, 1, 1, 1};
+    for (int i = 0; i < n_dims; i++) {
+        ne_arr[i] = ne.begin()[i];
+    }
+
+    struct ggml_tensor * tensor = ggml_new_tensor(ctx, type, n_dims, ne_arr);
+    if (!tensor) {
+        throw std::runtime_error(format("create_combined_tensor: context full, failed to create '%s'", name));
+    }
+    ggml_set_name(tensor, name);
+    return tensor;
+}
+
+bool llama_model_loader::read_tensor_raw(const char * name, void * buf, size_t buf_size) const {
+    const auto * w = get_weight(name);
+    if (!w) {
+        return false;
+    }
+    const size_t expected = ggml_nbytes(w->tensor);
+    if (expected != buf_size) {
+        LLAMA_LOG_WARN("%s: tensor '%s' size mismatch: expected %zu, got %zu\n",
+                       __func__, name, expected, buf_size);
+        return false;
+    }
+    if (use_mmap) {
+        if (w->idx >= mappings.size()) {
+            return false;
+        }
+        const auto & mapping = mappings.at(w->idx);
+        memcpy(buf, (const uint8_t *)mapping->addr() + w->offs, buf_size);
+    } else {
+        if (w->idx >= files.size()) {
+            return false;
+        }
+        const auto & file = files.at(w->idx);
+        file->seek(w->offs, SEEK_SET);
+        file->read_raw(buf, buf_size);
+    }
+    return true;
 }
 
 void llama_model_loader::done_getting_tensors() const {
