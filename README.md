@@ -5,7 +5,9 @@ Fork of [llama.cpp](https://github.com/ggerganov/llama.cpp) with fixes for runni
 ## GGUF Download
 
 Download the quantized model from Hugging Face:  
-**[antirez/deepseek-v4-gguf](https://huggingface.co/antirez/deepseek-v4-gguf)** — DeepSeek-V4-Flash-IQ2_XXS (284B params, ~82 GB)
+**[antirez/deepseek-v4-gguf](https://huggingface.co/antirez/deepseek-v4-gguf)** — DeepSeek-V4-Flash-IQ2_XXS (284B params, 86.7 GB)
+
+> IQ2_XXS is extreme quantization (2.06 bpw). Despite the aggressiveness, quality is surprisingly good — very usable for chat and coding.
 
 ## The Fix
 
@@ -46,7 +48,6 @@ llama.cpp/build/bin/llama-server \
 ```bash
 git clone https://github.com/phuongncn/llama.cpp-gx10-dgx-sparks-deepseekv4.git
 cd llama.cpp-gx10-dgx-sparks-deepseekv4
-git checkout main
 mkdir build && cd build
 cmake .. -DGGML_CUDA=ON
 cmake --build . -j$(nproc) --target llama-server
@@ -72,4 +73,4 @@ Tested on ASUS GX10 (same hardware as NVIDIA DGX Spark):
 
 - Requires `-np 1` (single sequence) — multi-sequence causes assertion failure in compressor
 - Recommended context limit: ~128K max to stay within 124 GB VRAM budget
-- Performance ceiling: approximately 8-10 tok/s for 80GB+ models on this hardware
+- IQ2_XXS quality is good despite extreme compression — very usable for chat and coding tasks
