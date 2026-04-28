@@ -15,17 +15,17 @@ DeepSeek V4 Flash has 43 layers with 41 compressed layers (compress_ratios: [0,0
 
 **Commit:** [`136e01456`](https://github.com/phuongncn/llama.cpp-gx10-dgx-sparks-deepseekv4/commit/136e01456c882e351478ba333754ce511b6480d4)
 
-## Test Results — 7-8 tok/s initial, 6-7 tok/s sustained
+## Test Results — 8.48 tok/s prompt, 6.65 tok/s generation
 
-Tested on ASUS GX10 (NVIDIA GB10, 128GB LPDDR5X unified, 273 GB/s):
+Tested on ASUS GX10 (NVIDIA GB10, 128GB LPDDR5X unified, 273 GB/s), with `-ctk f32 -ctv f32`:
 
 ```
-prompt eval:  676.25 ms /    5 tokens = 135.25 ms/tok = 7.39 tok/s
-generation: 24375.50 ms /  155 tokens = 157.26 ms/tok = 6.36 tok/s
-total:      25051.75 ms /  160 tokens
+prompt eval time =  1179.86 ms /   10 tokens ( 117.99 ms/tok =  8.48 tok/s)
+       eval time = 23898.95 ms /  159 tokens ( 150.31 ms/tok =  6.65 tok/s)
+      total time = 25078.81 ms /  169 tokens
 ```
 
-> **Tip:** Using `-ctk f32 -ctv f32` (KV cache in f32 instead of f16) gives faster generation — **7-8 tok/s** at the start of a response, settling to **6-7 tok/s** as context grows. On Blackwell unified memory, f32 KV avoids precision-conversion overhead and benefits from the high bandwidth (273 GB/s).
+> **f32 vs f16 KV cache:** `-ctk f32 -ctv f32` is faster than f16 on Blackwell unified memory. The GB10's high bandwidth (273 GB/s) means the extra memory footprint of f32 is offset by avoiding precision-conversion overhead during attention. Generation speed starts around 7-8 tok/s and settles to ~6.5 tok/s as KV cache fills.
 
 ## Run Command
 
