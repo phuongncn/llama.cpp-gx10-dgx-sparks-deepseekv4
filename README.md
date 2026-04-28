@@ -15,7 +15,7 @@ DeepSeek V4 Flash has 43 layers with 41 compressed layers (compress_ratios: [0,0
 
 **Commit:** [`136e01456`](https://github.com/phuongncn/llama.cpp-gx10-dgx-sparks-deepseekv4/commit/136e01456c882e351478ba333754ce511b6480d4)
 
-## Test Results — 6-7 tok/s
+## Test Results — 7-8 tok/s initial, 6-7 tok/s sustained
 
 Tested on ASUS GX10 (NVIDIA GB10, 128GB LPDDR5X unified, 273 GB/s):
 
@@ -25,6 +25,8 @@ generation: 24375.50 ms /  155 tokens = 157.26 ms/tok = 6.36 tok/s
 total:      25051.75 ms /  160 tokens
 ```
 
+> **Tip:** Using `-ctk f32 -ctv f32` (KV cache in f32 instead of f16) gives faster generation — **7-8 tok/s** at the start of a response, settling to **6-7 tok/s** as context grows. On Blackwell unified memory, f32 KV avoids precision-conversion overhead and benefits from the high bandwidth (273 GB/s).
+
 ## Run Command
 
 ```bash
@@ -33,7 +35,7 @@ llama.cpp/build/bin/llama-server \
   --host 0.0.0.0 --port 8080 \
   --n-gpu-layers 99 \
   --ctx-size 128000 \
-  -ctk f16 -ctv f16 \
+  -ctk f32 -ctv f32 \
   -b 4096 -ub 512 \
   --parallel 1 \
   --threads 4 --threads-batch 20 \
@@ -55,7 +57,7 @@ cmake --build . -j$(nproc) --target llama-server
 # Run
 ./bin/llama-server -m /path/to/DeepSeek-V4-Flash-IQ2_XXS.gguf \
   --ctx-size 128000 --n-gpu-layers 99 -b 4096 -ub 512 \
-  -ctk f16 -ctv f16 --parallel 1 --threads 4 --threads-batch 20 \
+  -ctk f32 -ctv f32 --parallel 1 --threads 4 --threads-batch 20 \
   -fa on --no-mmap --reasoning-budget -1 \
   --host 0.0.0.0 --port 8080
 ```
